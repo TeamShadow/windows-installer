@@ -73,8 +73,8 @@ UninstPage instfiles
 ;--------------------------------
 Section "clang" CLANG_FLAG
   InitPluginsDir
-  File /oname=$PLUGINSDIR\${CLANG_INSTALLER} ${CLANG_INSTALLER}
-  ExecWait '"$PLUGINSDIR\${CLANG_INSTALLER}"'
+  ;File /oname=$PLUGINSDIR\${CLANG_INSTALLER} ${CLANG_INSTALLER}
+  ;ExecWait '"$PLUGINSDIR\${CLANG_INSTALLER}"'
 SectionEnd
 
 ; The stuff to install
@@ -92,9 +92,9 @@ Section "Shadow Compiler (required)"
   File "shadow.json"
   File "LICENSE.txt"
 
-  File /nonfatal /a /r "docs\" # Documentation
-  File /nonfatal /a /r "include\" # C headers
-  File /nonfatal /a /r "src\" # Standard library source
+  ;File /nonfatal /a /r "docs\" # Documentation
+  ;File /nonfatal /a /r "include\" # C headers
+  ;File /nonfatal /a /r "src\" # Standard library source
   
   
   ; Write the installation path into the registry
@@ -272,16 +272,26 @@ clang:
 	Pop $0 ; should contain major version (e.g. 16)
 	IntCmp $0 ${CLANG_VERSION} donothing optionalclang donothing
 donothing:
+  MessageBox MB_OK "Do nothing!"
   !insertmacro UnselectSection ${CLANG_FLAG}
   Return  
 optionalclang:
-	!insertmacro SetSectionFlag ${CLANG_FLAG} ${SF_RO}
+  ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LLVM" ""
+  MessageBox MB_YESNOCANCEL "Clang version $0 currently installed, but version ${CLANG_VERSION} can be installed by this installer. Uninstall old Clang first? Uninstaller at: $1" IDYES uninstallclang IDNO userchoice IDCANCEL cancel
+uninstallclang:
   Return
-no clang:
-  !insertmacro SelectSection ${CLANG_FLAG}
+userchoice:
+	!insertmacro SelectSection ${CLANG_FLAG}
+  Return
+noclang:  
+  !insertmacro SetSectionFlag ${CLANG_FLAG} ${SF_RO}
+  Return
+cancel:
+  Quit
 FunctionEnd
 
 Function .onInit
    Call checkJavaVersion
+   Call checkClangVersion
 FunctionEnd
 
