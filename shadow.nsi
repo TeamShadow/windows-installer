@@ -1,7 +1,10 @@
 !include LogicLib.nsh
+!include Sections.nsh
 !include x64.nsh
 
-!define JAVA_VERSION 17
+!define MIN_JAVA_VERSION 17
+!define CLANG_INSTALLER "LLVM-18.1.2-win64.exe"
+!define CLANG_VERSION 18
 
 
 ; shadow.nsi
@@ -68,10 +71,10 @@ UninstPage uninstConfirm
 UninstPage instfiles
 
 ;--------------------------------
-Section "clang"
+Section "clang" CLANG_FLAG
   InitPluginsDir
-  File /oname=$PLUGINSDIR\LLVM-18.1.2-win64.exe "LLVM-18.1.2-win64.exe"
-  ExecWait '"$PLUGINSDIR\LLVM-18.1.2-win64.exe"'
+  File /oname=$PLUGINSDIR\${CLANG_INSTALLER} ${CLANG_INSTALLER}
+  ExecWait '"$PLUGINSDIR\${CLANG_INSTALLER}"'
 SectionEnd
 
 ; The stuff to install
@@ -231,13 +234,13 @@ FunctionEnd
 
 Function checkJavaVersion
 	nsExec::ExecToStack  'cmd /c "java -version"'
-    Pop $0 ; not equal to 0 if failed
+  Pop $0 ; not equal to 0 if failed
 	IntCmp $0 0 java nojava nojava
 java:    
 	Pop $0 ; version
 	${Explode}  $1  '"' $0 ; separates based on "
 	Pop $0 ; should contain 'java version "'
-	Pop $0 ; should contain actual version number (e.g. 19.0.1)
+	Pop $0 ; should contain actual version number (e.g. '19.0.1')
 	${Explode}  $1  "." $0 ; separates based on .
 	Pop $0 ; should contain major version (e.g. 19)
 	IntCmp $0 1 nextvalue testversion testversion ; old Java was always 1.x, like 1.8 for Java 8
@@ -245,14 +248,37 @@ nextvalue:
 	Pop $0
 	Goto testversion
 testversion:
-	IntCmp $0 ${JAVA_VERSION} done badversion done
+	IntCmp $0 ${MIN_JAVA_VERSION} done badversion done
 badversion:
-	MessageBox MB_OK "Java $0 found, but Java ${JAVA_VERSION} or higher is required for Shadow."
+	MessageBox MB_OK "Java $0 found, but Java ${MIN_JAVA_VERSION} or higher is required for Shadow."
 	Quit
 nojava:
     MessageBox MB_OK "No Java run-time environment found.$\n$\nNote that the location of java.exe must be added to the PATH environment variable for the Shadow compiler to function."
 	Quit
 done:
+FunctionEnd
+
+Function checkClangVersion
+	nsExec::ExecToStack  'cmd /c "clang --version"'
+  Pop $0 ; not equal to 0 if failed
+	IntCmp $0 0 clang noclang noclang
+clang:    
+	Pop $0 ; version
+	${Explode}  $1  ' ' $0 ; separates based on space
+	Pop $0 ; should contain 'clang'
+	Pop $0 ; should contain 'version'
+  Pop $0 ; should contain actual version (e.g. '16.0.0')
+	${Explode}  $1  "." $0 ; separates based on .
+	Pop $0 ; should contain major version (e.g. 16)
+	IntCmp $0 ${CLANG_VERSION} donothing optionalclang donothing
+donothing:
+  !insertmacro UnselectSection ${CLANG_FLAG}
+  Return  
+optionalclang:
+	!insertmacro SetSectionFlag ${CLANG_FLAG} ${SF_RO}
+  Return
+no clang:
+  !insertmacro SelectSection ${CLANG_FLAG}
 FunctionEnd
 
 Function .onInit
