@@ -277,8 +277,10 @@ donothing:
   Return  
 optionalclang:
   ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LLVM" ""
-  MessageBox MB_YESNOCANCEL "Clang version $0 currently installed, but version ${CLANG_VERSION} can be installed by this installer. Uninstall old Clang first? Uninstaller at: $1" IDYES uninstallclang IDNO userchoice IDCANCEL cancel
+  MessageBox MB_YESNOCANCEL "Clang version $0 currently installed, but version ${CLANG_VERSION} can be installed by this installer. Uninstall old Clang first? Uninstaller at: $1" IDYES uninstallclang IDNO userchoice
+  Quit
 uninstallclang:
+  ; set variable for uninstall clang here
   Return
 userchoice:
 	!insertmacro SelectSection ${CLANG_FLAG}
@@ -286,8 +288,6 @@ userchoice:
 noclang:  
   !insertmacro SetSectionFlag ${CLANG_FLAG} ${SF_RO}
   Return
-cancel:
-  Quit
 FunctionEnd
 
 Function .onInit
