@@ -1,4 +1,5 @@
 *.exe
+!PathEd.exe
 *.jar
 /docs/
 /src/

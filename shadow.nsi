@@ -2,10 +2,11 @@
 !include Sections.nsh
 !include x64.nsh
 
+!define SHADOW_VERSION "0.8.5.0"
 !define MIN_JAVA_VERSION 17
-!define CLANG_INSTALLER "LLVM-18.1.2-win64.exe"
-!define CLANG_VERSION 18
-
+!define LLVM_INSTALLER "LLVM-18.1.2-win64.exe"
+!define LLVM_VERSION 18
+!define LLVM_FULL_VERSION "18.1.2"
 
 ; shadow.nsi
 ;
@@ -17,8 +18,8 @@
 ; Actions:
 ; Check if Java is installed with version 17 or greater
 ; If not, exit
-; Check if clang (any particular version?) is installed
-; Make optional if is installed but the bundled version is newer?
+; Check if LLVM is installed
+; Make optional if is installed but the bundled version is the same/newer?
 ; Install Visual Studio stuff (vs_BuildTools.exe) see: https://stackoverflow.com/questions/62551793/how-to-automate-from-command-line-the-installation-of-a-visual-studio-build-to
 ; Copy files
 ; Add shadow bin directory to path
@@ -49,13 +50,13 @@ LoadLanguageFile "${NSISDIR}\Contrib\Language files\English.nlf"
 ;--------------------------------
 ;Version Information
 
-  VIProductVersion "0.8.5.0"
+  VIProductVersion ${SHADOW_VERSION}
   VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "Shadow Compiler"
   VIAddVersionKey /LANG=${LANG_ENGLISH} "Comments" "Licensed under the Apache License, Version 2.0; you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0"
   VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "Team Shadow"
   VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright 2024 Team Shadow"
   VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "Shadow Compiler"
-  VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "0.8.5"
+  VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" ${SHADOW_VERSION}
 
 ;--------------------------------
 
@@ -70,15 +71,48 @@ Page instfiles
 UninstPage uninstConfirm
 UninstPage instfiles
 
+!macro removeLLVM UN
+Function ${UN}removeLLVM
+  Pop $2
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LLVM" "UninstallString"
+  StrLen $1 $0
+  ${If} $1 > 0
+    MessageBox MB_YESNO "Do you want to uninstall the $2 toolchain?" IDYES remove IDNO doNotRemove    
+  ${Else}
+    Return
+  ${EndIf}
+remove:
+  ExecWait $0
+  Return
+doNotRemove:
+  Return
+FunctionEnd
+!macroend
+!insertmacro removeLLVM "" 
+!insertmacro removeLLVM "un."
+
+
 ;--------------------------------
-Section "clang" CLANG_FLAG
+Section "LLVM ${LLVM_FULL_VERSION} Toolchain" LLVM_FLAG
   InitPluginsDir
-  ;File /oname=$PLUGINSDIR\${CLANG_INSTALLER} ${CLANG_INSTALLER}
-  ;ExecWait '"$PLUGINSDIR\${CLANG_INSTALLER}"'
+  Push "existing LLVM"
+  Call removeLLVM
+  ;File /oname=$PLUGINSDIR\${LLVM_INSTALLER} ${LLVM_INSTALLER}
+  ;ExecWait '"$PLUGINSDIR\${LLVM_INSTALLER}"' $0
+  ;${If} $0 = 0 ; successful install    
+  ;  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "LLVMInstalled" 1    
+  ;${EndIf}
 SectionEnd
 
-; The stuff to install
-Section "Shadow Compiler (required)"
+Section "VS Build Tools"
+  SectionIn RO
+  InitPluginsDir
+  
+  File /oname=$PLUGINSDIR\vs_BuildTools.exe vs_BuildTools.exe
+  ExecWait '"$PLUGINSDIR\vs_BuildTools.exe"'  
+SectionEnd
+
+Section "Shadow ${SHADOW_VERSION}"
 
   SectionIn RO
   
@@ -91,6 +125,7 @@ Section "Shadow Compiler (required)"
   File "shadox.cmd"
   File "shadow.json"
   File "LICENSE.txt"
+  File "PathEd.exe"
 
   ;File /nonfatal /a /r "docs\" # Documentation
   ;File /nonfatal /a /r "include\" # C headers
@@ -100,14 +135,15 @@ Section "Shadow Compiler (required)"
   ; Write the installation path into the registry
   WriteRegStr HKLM SOFTWARE\Shadow "Install_Dir" "$INSTDIR"
   
-  ; Write stuff if VS tools were installed or clang was installed?
   ; Write the uninstall keys for Windows
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "DisplayName" "Shadow"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "UninstallString" '"$INSTDIR\uninstall.exe"'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "NoRepair" 1
   WriteUninstaller "$INSTDIR\uninstall.exe"
-  
+
+  ; Add Shadow to path
+  ExecWait '".\PathEd.exe" add "$INSTDIR\bin"'
 SectionEnd
 
 ; Optional section (can be disabled by the user)
@@ -123,8 +159,15 @@ SectionEnd
 ; Uninstaller
 
 Section "Uninstall"
+  ; Remove LLVM if installed by Shadow installer
+  ReadRegDWORD $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "LLVMInstalled"
+  ${If} $0 = 1
+    Push "LLVM"
+    Call un.removeLLVM
+  ${EndIf}
 
-  ; Remove VS tools and clang if installed?
+  ; Remove Shadow path  
+  ExecWait '".\PathEd.exe" remove "$INSTDIR\bin"'
   
   ; Remove registry keys
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow"
@@ -235,34 +278,34 @@ FunctionEnd
 Function checkJavaVersion
 	nsExec::ExecToStack  'cmd /c "java -version"'
   Pop $0 ; not equal to 0 if failed
-	IntCmp $0 0 java nojava nojava
-java:    
+	IntCmp $0 0 foundJava missingJava missingJava
+foundJava:    
 	Pop $0 ; version
 	${Explode}  $1  '"' $0 ; separates based on "
 	Pop $0 ; should contain 'java version "'
 	Pop $0 ; should contain actual version number (e.g. '19.0.1')
 	${Explode}  $1  "." $0 ; separates based on .
 	Pop $0 ; should contain major version (e.g. 19)
-	IntCmp $0 1 nextvalue testversion testversion ; old Java was always 1.x, like 1.8 for Java 8
-nextvalue:
+	IntCmp $0 1 nextDigit testVersion testVersion ; old Java was always 1.x, like 1.8 for Java 8
+nextDigit:
 	Pop $0
-	Goto testversion
-testversion:
-	IntCmp $0 ${MIN_JAVA_VERSION} done badversion done
-badversion:
+	Goto testVersion
+testVersion:
+	IntCmp $0 ${MIN_JAVA_VERSION} done badJavaVersion done
+badJavaVersion:
 	MessageBox MB_OK "Java $0 found, but Java ${MIN_JAVA_VERSION} or higher is required for Shadow."
 	Quit
-nojava:
+missingJava:
     MessageBox MB_OK "No Java run-time environment found.$\n$\nNote that the location of java.exe must be added to the PATH environment variable for the Shadow compiler to function."
 	Quit
 done:
 FunctionEnd
 
-Function checkClangVersion
+Function checkLLVMVersion
 	nsExec::ExecToStack  'cmd /c "clang --version"'
   Pop $0 ; not equal to 0 if failed
-	IntCmp $0 0 clang noclang noclang
-clang:    
+	IntCmp $0 0 foundLLVM missingLLVM missingLLVM
+foundLLVM:    
 	Pop $0 ; version
 	${Explode}  $1  ' ' $0 ; separates based on space
 	Pop $0 ; should contain 'clang'
@@ -270,28 +313,24 @@ clang:
   Pop $0 ; should contain actual version (e.g. '16.0.0')
 	${Explode}  $1  "." $0 ; separates based on .
 	Pop $0 ; should contain major version (e.g. 16)
-	IntCmp $0 ${CLANG_VERSION} donothing optionalclang donothing
-donothing:
-  MessageBox MB_OK "Do nothing!"
-  !insertmacro UnselectSection ${CLANG_FLAG}
-  Return  
-optionalclang:
-  ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LLVM" ""
-  MessageBox MB_YESNOCANCEL "Clang version $0 currently installed, but version ${CLANG_VERSION} can be installed by this installer. Uninstall old Clang first? Uninstaller at: $1" IDYES uninstallclang IDNO userchoice
-  Quit
-uninstallclang:
-  ; set variable for uninstall clang here
+	IntCmp $0 ${LLVM_VERSION} suggestInstallLLVM allowInstallLLVM doNotInstallLLVM
+suggestInstallLLVM:
+  !insertmacro UnselectSection ${LLVM_FLAG}
   Return
-userchoice:
-	!insertmacro SelectSection ${CLANG_FLAG}
+allowInstallLLVM:  
+  !insertmacro SelectSection ${LLVM_FLAG}
   Return
-noclang:  
-  !insertmacro SetSectionFlag ${CLANG_FLAG} ${SF_RO}
+doNotInstallLLVM:  
+  !insertmacro UnselectSection ${LLVM_FLAG}
+  !insertmacro SetSectionFlag ${LLVM_FLAG} ${SF_RO}
+  Return
+missingLLVM:  
+  !insertmacro SetSectionFlag ${LLVM_FLAG} ${SF_RO}
   Return
 FunctionEnd
 
 Function .onInit
    Call checkJavaVersion
-   Call checkClangVersion
+   Call checkLLVMVersion
 FunctionEnd
 
