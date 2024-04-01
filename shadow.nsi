@@ -3,7 +3,7 @@
 !include x64.nsh
 
 !define SHADOW_VERSION "0.8.5.0"
-!define MIN_JAVA_VERSION 30
+!define MIN_JAVA_VERSION 17
 !define JAVA_DOWNLOAD_URL "https://www.oracle.com/java/technologies/downloads/"
 
 ; shadow.nsi
