@@ -1,6 +1,17 @@
 !include LogicLib.nsh
 !include Sections.nsh
 !include x64.nsh
+!include WinCore.nsh
+!ifndef NSIS_CHAR_SIZE
+    !define NSIS_CHAR_SIZE 1
+    !define SYSTYP_PTR i
+!else
+    !define SYSTYP_PTR p
+!endif
+!ifndef ERROR_MORE_DATA
+    !define ERROR_MORE_DATA 234
+!endif
+
 
 !define SHADOW_VERSION "0.8.5.0"
 !define MIN_JAVA_VERSION 17
@@ -163,7 +174,7 @@ Section "Visual Studio Build Tools for Clang"
   ${EndIf}
 
   ; Add Clang to path
-  ExecWait 'java -jar PathEditor.jar add "$0"'  
+  nsExec::Exec 'java -jar PathEditor.jar add "$0"'  
 SectionEnd
 
 Section "Shadow ${SHADOW_VERSION}"
@@ -173,16 +184,17 @@ Section "Shadow ${SHADOW_VERSION}"
   File /nonfatal /a /r "include\" # C headers
   SetOutPath "$INSTDIR\src"
   File /nonfatal /a /r "src\" # Standard library source
+  CreateDirectory "$INSTDIR\bin"
 
   ; Set output path to the installation directory.
   SetOutPath $INSTDIR
-  
+    
   ; Put files there
   File "shadow.jar"
   File "shadowc.cmd"
   File "shadox.cmd"
   File "shadow.json"
-  File "LICENSE.txt"
+  File "LICENSE.txt"  
     
   ; Write the installation path into the registry
   WriteRegStr HKLM SOFTWARE\Shadow "Install_Dir" "$INSTDIR"
@@ -195,12 +207,16 @@ Section "Shadow ${SHADOW_VERSION}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Add Shadow to path
-  ExecWait 'java -jar PathEditor.jar add "$INSTDIR"'  
+  nsExec::Exec 'java -jar "$INSTDIR\PathEditor.jar" add "$INSTDIR"'  
 
-  ; Compile standard library
-  ExecWait '"shadowc -b"'
+  ; https://stackoverflow.com/questions/38245621/nsis-refresh-environment-during-setup
+  Call RefreshProcessEnvironmentPath
+
+  ExpandEnvStrings $0 %COMSPEC%  
   ; Generate documentation
-  ExecWait '"shadox src -d docs"'
+  nsExec::Exec '"$0" /c ""$INSTDIR\shadox.cmd" "$INSTDIR\src" "-d" "$INSTDIR\docs""'  
+  ; Compile standard library
+  nsExec::Exec '"$0" /c "cd /D "$INSTDIR" & "shadowc.cmd" "-b""'  
 SectionEnd
 
 ; Optional section (can be disabled by the user)
@@ -232,10 +248,10 @@ Section "Uninstall"
   StrCpy $0 '$vsBuildPath\VC\Tools\Llvm\x64\bin'
 
   ; Remove Clang from path  
-  ExecWait 'java -jar PathEditor.jar remove "$0"'  
+  nsExec::Exec 'java -jar "$INSTDIR\PathEditor.jar" remove "$0"'  
 
   ; Remove Shadow path  
-  ExecWait 'java -jar PathEditor.jar remove "$INSTDIR\bin"'  
+  nsExec::Exec 'java -jar "$INSTDIR\PathEditor.jar" remove "$INSTDIR"'  
 
   MessageBox MB_YESNO "Remove Visual Studio Build Tools?" IDYES removeVSBuildTools IDNO keepVSBuildTools
 
@@ -272,6 +288,7 @@ keepVSBuildTools:
   RMDir /r "$INSTDIR\docs"
   RMDir /r "$INSTDIR\include"
   RMDir /r "$INSTDIR\src"
+  RMDir /r "$INSTDIR\bin"
     
   ; Remove shortcuts, if any
   Delete "$SMPROGRAMS\Shadow\*.lnk"
@@ -378,7 +395,8 @@ Function Explode
 FunctionEnd
 
 Function checkJavaVersion
-	nsExec::ExecToStack  'cmd /c "java -version"'
+  ExpandEnvStrings $0 %COMSPEC%
+	nsExec::ExecToStack  '$0 /c "java -version"'
   Pop $0 ; not equal to 0 if failed
 	IntCmp $0 0 foundJava missingJava missingJava
 foundJava:    
@@ -404,6 +422,71 @@ missingJava:
 	Quit
 done:
 FunctionEnd
+
+
+
+Function RegReadExpandStringAlloc
+    System::Store S
+    Pop $R2 ; reg value
+    Pop $R3 ; reg path
+    Pop $R4 ; reg hkey
+    System::Alloc 1 ; mem
+    StrCpy $3 0 ; size
+
+    loop:
+        System::Call 'SHLWAPI::SHGetValue(${SYSTYP_PTR}R4,tR3,tR2,i0,${SYSTYP_PTR}sr2,*ir3r3)i.r0' ; NOTE: Requires SHLWAPI 4.70 (IE 3.01+ / Win95OSR2+)
+        ${If} $0 = 0
+            Push $2
+            Push $0
+        ${Else}
+            System::Free $2
+            ${If} $0 = ${ERROR_MORE_DATA}
+                IntOp $3 $3 + ${NSIS_CHAR_SIZE} ; Make sure there is room for SHGetValue to \0 terminate
+                System::Alloc $3
+                Goto loop
+            ${Else}
+                Push $0
+            ${EndIf}
+        ${EndIf}
+    System::Store L
+FunctionEnd
+
+Function RefreshProcessEnvironmentPath
+    System::Store S
+    Push ${HKEY_CURRENT_USER}
+    Push "Environment"
+    Push "Path"
+    Call RegReadExpandStringAlloc
+    Pop $0
+
+    ${IfThen} $0 <> 0 ${|} System::Call *(i0)${SYSTYP_PTR}.s ${|}
+    Pop $1
+    Push ${HKEY_LOCAL_MACHINE}
+    Push "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+    Push "Path"
+    Call RegReadExpandStringAlloc
+    Pop $0
+
+    ${IfThen} $0 <> 0 ${|} System::Call *(i0)${SYSTYP_PTR}.s ${|}
+    Pop $2
+    System::Call 'KERNEL32::lstrlen(t)(${SYSTYP_PTR}r1)i.R1'
+    System::Call 'KERNEL32::lstrlen(t)(${SYSTYP_PTR}r2)i.R2'
+    System::Call '*(&t$R2 "",&t$R1 "",i)${SYSTYP_PTR}.r0' ; The i is 4 bytes, enough for a ';' separator and a '\0' terminator (Unicode)
+    StrCpy $3 ""
+
+    ${If} $R1 <> 0
+    ${AndIf} $R2 <> 0
+        StrCpy $3 ";"
+    ${EndIf}
+
+    System::Call 'USER32::wsprintf(${SYSTYP_PTR}r0,t"%s%s%s",${SYSTYP_PTR}r2,tr3,${SYSTYP_PTR}r1)?c'
+    System::Free $1
+    System::Free $2
+    System::Call 'KERNEL32::SetEnvironmentVariable(t"PATH",${SYSTYP_PTR}r0)'
+    System::Free $0
+    System::Store L
+FunctionEnd
+
 
 Function .onInit
   StrCpy $vsBuildOptions "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.Llvm.Clang"
