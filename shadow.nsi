@@ -3,10 +3,8 @@
 !include x64.nsh
 
 !define SHADOW_VERSION "0.8.5.0"
-!define MIN_JAVA_VERSION 17
-!define LLVM_INSTALLER "LLVM-18.1.2-win64.exe"
-!define LLVM_VERSION 18
-!define LLVM_FULL_VERSION "18.1.2"
+!define MIN_JAVA_VERSION 30
+!define JAVA_DOWNLOAD_URL "https://www.oracle.com/java/technologies/downloads/"
 
 ; shadow.nsi
 ;
@@ -40,7 +38,7 @@ RequestExecutionLevel admin
 Unicode True
 
 ; The default installation directory
-InstallDir $PROGRAMFILES\Shadow
+InstallDir $PROGRAMFILES64\Shadow
 
 ; Registry key to check for directory (so if you install again, it will 
 ; overwrite the old one automatically)
@@ -62,60 +60,120 @@ LoadLanguageFile "${NSISDIR}\Contrib\Language files\English.nlf"
 
 ;--------------------------------
 
+; Usage:
+; ${Trim} $trimmedString $originalString
+ 
+!define Trim "!insertmacro Trim"
+!define un.Trim "!insertmacro un.Trim"
+ 
+!macro Trim ResultVar String
+  Push "${String}"
+  Call Trim
+  Pop "${ResultVar}"
+!macroend
+
+!macro un.Trim ResultVar String
+  Push "${String}"
+  Call un.Trim
+  Pop "${ResultVar}"
+!macroend
+
+; Trim
+;   Removes leading & trailing whitespace from a string
+; Usage:
+;   Push 
+;   Call Trim
+;   Pop 
+!macro TRIMMING un
+Function ${un}Trim
+	Exch $R1 ; Original string
+	Push $R2
+ 
+Loop:
+	StrCpy $R2 "$R1" 1
+	StrCmp "$R2" " " TrimLeft
+	StrCmp "$R2" "$\r" TrimLeft
+	StrCmp "$R2" "$\n" TrimLeft
+	StrCmp "$R2" "$\t" TrimLeft
+	GoTo Loop2
+TrimLeft:	
+	StrCpy $R1 "$R1" "" 1
+	Goto Loop
+ 
+Loop2:
+	StrCpy $R2 "$R1" 1 -1
+	StrCmp "$R2" " " TrimRight
+	StrCmp "$R2" "$\r" TrimRight
+	StrCmp "$R2" "$\n" TrimRight
+	StrCmp "$R2" "$\t" TrimRight
+	GoTo Done
+TrimRight:	
+	StrCpy $R1 "$R1" -1
+	Goto Loop2
+ 
+Done:
+	Pop $R2
+	Exch $R1
+FunctionEnd
+!macroend
+
+!insertmacro TRIMMING ""
+!insertmacro TRIMMING "un."
+
+Var vsBuildOptions
+
 ; Pages
 
-Page components
+Page components "" "" CountSDKs
 Page directory
 Page instfiles
 
 UninstPage uninstConfirm
 UninstPage instfiles
 
-!macro removeLLVM UN
-Function ${UN}removeLLVM
-  Pop $2
-  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LLVM" "UninstallString"
-  StrLen $1 $0
-  ${If} $1 > 0
-    MessageBox MB_YESNO "Do you want to uninstall the $2 toolchain?" IDYES remove IDNO doNotRemove    
-  ${Else}
-    Return
-  ${EndIf}
-remove:
-  ExecWait $0
-  Return
-doNotRemove:
-  Return
-FunctionEnd
-!macroend
-!insertmacro removeLLVM "" 
-!insertmacro removeLLVM "un."
-
-
-;--------------------------------
-Section "LLVM ${LLVM_FULL_VERSION} Toolchain" LLVM_FLAG
-  InitPluginsDir
-  Push "existing LLVM"
-  Call removeLLVM
-  ;File /oname=$PLUGINSDIR\${LLVM_INSTALLER} ${LLVM_INSTALLER}
-  ;ExecWait '"$PLUGINSDIR\${LLVM_INSTALLER}"' $0
-  ;${If} $0 = 0 ; successful install    
-  ;  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "LLVMInstalled" 1    
-  ;${EndIf}
+Section "Windows SDK 10" SDK10_FLAG
+ StrCpy $vsBuildOptions "$vsBuildOptions --add Microsoft.VisualStudio.Component.Windows10SDK.20348"
+ WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "Windows10SDK" "20348"  
 SectionEnd
 
-Section "VS Build Tools"
+Section "Windows SDK 11" SDK11_FLAG
+ StrCpy $vsBuildOptions "$vsBuildOptions --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
+ WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "Windows11SDK" "22621"  
+SectionEnd
+
+Section "Visual Studio Build Tools for Clang"
   SectionIn RO
-  InitPluginsDir
+  InitPluginsDir 
   
   File /oname=$PLUGINSDIR\vs_BuildTools.exe vs_BuildTools.exe
-  ExecWait '"$PLUGINSDIR\vs_BuildTools.exe"'  
+  ExecWait '"$PLUGINSDIR\vs_BuildTools.exe" $vsBuildOptions'  
+  
+  ; Set output path to the installation directory.
+  SetOutPath $INSTDIR
+  File "PathEditor.jar" 
+
+  nsExec::ExecToStack '"$PROGRAMFILES\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath'
+  Pop $0 ; 0 if success
+  ${If} $0 = 0 
+    Pop $0 ; path
+    ${Trim} $0 $0
+    StrCpy $0 "$0\VC\Tools\Llvm\x64\bin"
+  ${Else}
+    StrCpy $0 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin' ; likely default  
+  ${EndIf}
+
+  ; Add Clang to path
+  ExecWait 'java -jar PathEditor.jar add "$0"'  
 SectionEnd
 
 Section "Shadow ${SHADOW_VERSION}"
-
   SectionIn RO
   
+  SetOutPath "$INSTDIR\include"
+  File /nonfatal /a /r "include\" # C headers
+  SetOutPath "$INSTDIR\src"
+  File /nonfatal /a /r "src\" # Standard library source
+
   ; Set output path to the installation directory.
   SetOutPath $INSTDIR
   
@@ -125,13 +183,7 @@ Section "Shadow ${SHADOW_VERSION}"
   File "shadox.cmd"
   File "shadow.json"
   File "LICENSE.txt"
-  File "PathEd.exe"
-
-  ;File /nonfatal /a /r "docs\" # Documentation
-  ;File /nonfatal /a /r "include\" # C headers
-  ;File /nonfatal /a /r "src\" # Standard library source
-  
-  
+    
   ; Write the installation path into the registry
   WriteRegStr HKLM SOFTWARE\Shadow "Install_Dir" "$INSTDIR"
   
@@ -143,7 +195,12 @@ Section "Shadow ${SHADOW_VERSION}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Add Shadow to path
-  ExecWait '".\PathEd.exe" add "$INSTDIR\bin"'
+  ExecWait 'java -jar PathEditor.jar add "$INSTDIR"'  
+
+  ; Compile standard library
+  ExecWait '"shadowc -b"'
+  ; Generate documentation
+  ExecWait '"shadox src -d docs"'
 SectionEnd
 
 ; Optional section (can be disabled by the user)
@@ -159,15 +216,45 @@ SectionEnd
 ; Uninstaller
 
 Section "Uninstall"
-  ; Remove LLVM if installed by Shadow installer
-  ReadRegDWORD $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "LLVMInstalled"
-  ${If} $0 = 1
-    Push "LLVM"
-    Call un.removeLLVM
+
+  Var /GLOBAL vsBuildRemove
+  Var /GLOBAL vsBuildPath
+
+  nsExec::ExecToStack '"$PROGRAMFILES\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath'
+  Pop $0 ; 0 if success
+  ${If} $0 = 0  
+    Pop $vsBuildPath ; path
+    ${un.Trim} $vsBuildPath $vsBuildPath
+  ${Else}
+    StrCpy $vsBuildPath 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools' ; likely default  
   ${EndIf}
 
+  StrCpy $0 '$vsBuildPath\VC\Tools\Llvm\x64\bin'
+
+  ; Remove Clang from path  
+  ExecWait 'java -jar PathEditor.jar remove "$0"'  
+
   ; Remove Shadow path  
-  ExecWait '".\PathEd.exe" remove "$INSTDIR\bin"'
+  ExecWait 'java -jar PathEditor.jar remove "$INSTDIR\bin"'  
+
+  MessageBox MB_YESNO "Remove Visual Studio Build Tools?" IDYES removeVSBuildTools IDNO keepVSBuildTools
+
+removeVSBuildTools:
+  ; Remove Visual Studio Build Tools
+  StrCpy $vsBuildRemove "--passive --remove Microsoft.VisualStudio.Workload.VCTools --remove Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --remove Microsoft.VisualStudio.Component.VC.Llvm.Clang"
+
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "Windows10SDK"
+  ${If} $0 != ""
+    StrCpy $vsBuildRemove "$vsBuildRemove --remove Microsoft.VisualStudio.Component.Windows10SDK.$0"
+  ${EndIf}
+
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "Windows11SDK"
+  ${If} $0 != ""
+    StrCpy $vsBuildRemove "$vsBuildRemove --remove Microsoft.VisualStudio.Component.Windows11SDK.$0"
+  ${EndIf}
+
+  ExecWait '"$PROGRAMFILES\Microsoft Visual Studio\Installer\setup.exe" modify --installPath $vsBuildPath $vsBuildRemove'
+keepVSBuildTools:
   
   ; Remove registry keys
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow"
@@ -179,7 +266,7 @@ Section "Uninstall"
   Delete "$INSTDIR\shadox.cmd"
   Delete "$INSTDIR\shadow.json"
   Delete "$INSTDIR\LICENSE.txt"
-  Delete "$INSTDIR\PathEd.exe"
+  Delete "$INSTDIR\PathEditor.jar"
   Delete "$INSTDIR\uninstall.exe"  
 
   RMDir /r "$INSTDIR\docs"
@@ -193,6 +280,20 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\Shadow"
   RMDir "$INSTDIR"
 SectionEnd
+
+Function CountSDKs
+  SectionGetFlags "${SDK10_FLAG}" $0
+  IntOp $1 $0 & ${SF_SELECTED}
+  SectionGetFlags "${SDK11_FLAG}" $0
+  IntOp $0 $0 & ${SF_SELECTED}
+  IntOp $1 $1 + $0 
+  IntCmp $1 1 doneCounting notEnough doneCounting
+notEnough:
+  MessageBox MB_OK|MB_ICONSTOP "You must select at least one SDK."
+  Abort     ;stay at page
+doneCounting:
+  Return
+FunctionEnd 
 
 
 !define Explode "!insertmacro Explode"
@@ -295,43 +396,25 @@ testVersion:
 	IntCmp $0 ${MIN_JAVA_VERSION} done badJavaVersion done
 badJavaVersion:
 	MessageBox MB_OK "Java $0 found, but Java ${MIN_JAVA_VERSION} or higher is required for Shadow."
+  ExecShell open "${JAVA_DOWNLOAD_URL}"
 	Quit
 missingJava:
-    MessageBox MB_OK "No Java run-time environment found.$\n$\nNote that the location of java.exe must be added to the PATH environment variable for the Shadow compiler to function."
+    MessageBox MB_OK "No Java run-time environment found.$\nJava ${MIN_JAVA_VERSION} or higher is required for Shadow.$\n$\nNote that the location of java.exe must be added to the PATH environment variable for the Shadow compiler to function."
+    ExecShell open "${JAVA_DOWNLOAD_URL}"
 	Quit
 done:
 FunctionEnd
 
-Function checkLLVMVersion
-	nsExec::ExecToStack  'cmd /c "clang --version"'
-  Pop $0 ; not equal to 0 if failed
-	IntCmp $0 0 foundLLVM missingLLVM missingLLVM
-foundLLVM:    
-	Pop $0 ; version
-	${Explode}  $1  ' ' $0 ; separates based on space
-	Pop $0 ; should contain 'clang'
-	Pop $0 ; should contain 'version'
-  Pop $0 ; should contain actual version (e.g. '16.0.0')
-	${Explode}  $1  "." $0 ; separates based on .
-	Pop $0 ; should contain major version (e.g. 16)
-	IntCmp $0 ${LLVM_VERSION} suggestInstallLLVM allowInstallLLVM doNotInstallLLVM
-suggestInstallLLVM:
-  !insertmacro UnselectSection ${LLVM_FLAG}
-  Return
-allowInstallLLVM:  
-  !insertmacro SelectSection ${LLVM_FLAG}
-  Return
-doNotInstallLLVM:  
-  !insertmacro UnselectSection ${LLVM_FLAG}
-  !insertmacro SetSectionFlag ${LLVM_FLAG} ${SF_RO}
-  Return
-missingLLVM:  
-  !insertmacro SetSectionFlag ${LLVM_FLAG} ${SF_RO}
-  Return
-FunctionEnd
-
 Function .onInit
-   Call checkJavaVersion
-   Call checkLLVMVersion
+  StrCpy $vsBuildOptions "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.Llvm.Clang"
+  Call checkJavaVersion
+  ReadRegStr $0 HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion" CurrentMajorVersionNumber
+  ${If} $0 < 10
+    MessageBox MB_OK "Shadow requires Windows 10 or later."
+    Quit
+  ${Else}
+    !insertmacro SelectSection ${SDK10_FLAG}
+    !insertmacro UnselectSection ${SDK11_FLAG}
+  ${EndIf}
 FunctionEnd
 
