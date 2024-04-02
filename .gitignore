@@ -1,4 +1,5 @@
 *.exe
+!vs_BuildTools.exe
 *.jar
 !PathEditor.jar
 /src/
