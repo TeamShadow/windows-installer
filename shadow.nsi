@@ -1,22 +1,3 @@
-!include LogicLib.nsh
-!include Sections.nsh
-!include x64.nsh
-!include WinCore.nsh
-!ifndef NSIS_CHAR_SIZE
-    !define NSIS_CHAR_SIZE 1
-    !define SYSTYP_PTR i
-!else
-    !define SYSTYP_PTR p
-!endif
-!ifndef ERROR_MORE_DATA
-    !define ERROR_MORE_DATA 234
-!endif
-
-
-!define SHADOW_VERSION "0.8.5.0"
-!define MIN_JAVA_VERSION 17
-!define JAVA_DOWNLOAD_URL "https://www.oracle.com/java/technologies/downloads/"
-
 ; shadow.nsi
 ;
 ; This script creates an installer for the Shadow compiler for Windows. 
@@ -35,6 +16,8 @@
 ; Make uninstaller
 ; Run Shadow library build
 
+; Build Unicode installer
+Unicode True
 
 ; The name of the installer
 Name "Shadow"
@@ -42,11 +25,6 @@ Name "Shadow"
 ; The file to write
 OutFile "shadow-installer.exe"
 
-; Request application privileges for Windows Vista
-RequestExecutionLevel admin
-
-; Build Unicode installer
-Unicode True
 
 ; The default installation directory
 InstallDir $PROGRAMFILES64\Shadow
@@ -55,17 +33,67 @@ InstallDir $PROGRAMFILES64\Shadow
 ; overwrite the old one automatically)
 InstallDirRegKey HKLM "Software\Shadow" "Install_Dir"
 
-LoadLanguageFile "${NSISDIR}\Contrib\Language files\English.nlf"
+
+; Request application privileges for Windows Vista
+RequestExecutionLevel admin
+
+!include LogicLib.nsh
+!include Sections.nsh
+!include x64.nsh
+!include WinCore.nsh
+
+
+!define SHADOW_VERSION "0.8.5.0"
+!define MIN_JAVA_VERSION 17
+!define JAVA_DOWNLOAD_URL "https://www.oracle.com/java/technologies/downloads/"
+
+
+
+;--------------------------------
+;Interface Settings
+
+ ;!define UMUI_SKIN "SoftRed"
+ 
+ !define MUI_ABORTWARNING
+ !define MUI_UNABORTWARNING
+ 
+  !define UMUI_PAGEBGIMAGE
+  !define UMUI_UNPAGEBGIMAGE
+
+
+ 
+!include "UMUI.nsh"
+
+ ;Pages
+
+  !insertmacro MUI_PAGE_LICENSE "License.txt"
+  !insertmacro MUI_PAGE_COMPONENTS
+  !insertmacro MUI_PAGE_DIRECTORY
+  !insertmacro MUI_PAGE_INSTFILES
+  
+  !insertmacro MUI_UNPAGE_CONFIRM
+  !insertmacro MUI_UNPAGE_INSTFILES
+
+;--------------------------------
+;Languages
+
+
+
+ !insertmacro MUI_LANGUAGE "English"
+
+
+
+;LoadLanguageFile "${NSISDIR}\Contrib\UltraModernUI\Language files\English.nsh"
 ;--------------------------------
 ;Version Information
 
   VIProductVersion ${SHADOW_VERSION}
-  VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "Shadow Compiler"
-  VIAddVersionKey /LANG=${LANG_ENGLISH} "Comments" "Licensed under the Apache License, Version 2.0; you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0"
-  VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "Team Shadow"
-  VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright 2024 Team Shadow"
-  VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "Shadow Compiler"
-  VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" ${SHADOW_VERSION}
+  VIAddVersionKey  "ProductName" "Shadow Compiler"
+  VIAddVersionKey "Comments" "Licensed under the Apache License, Version 2.0; you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0"
+  VIAddVersionKey "CompanyName" "Team Shadow"
+  VIAddVersionKey  "LegalCopyright" "Copyright 2024 Team Shadow"
+  VIAddVersionKey  "FileDescription" "Shadow Compiler"
+  VIAddVersionKey  "FileVersion" ${SHADOW_VERSION}
 
 ;--------------------------------
 
@@ -422,6 +450,17 @@ missingJava:
 	Quit
 done:
 FunctionEnd
+
+!ifndef NSIS_CHAR_SIZE
+    !define NSIS_CHAR_SIZE 1
+    !define SYSTYP_PTR i
+!else
+    !define SYSTYP_PTR p
+!endif
+!ifndef ERROR_MORE_DATA
+    !define ERROR_MORE_DATA 234
+!endif
+
 
 
 
