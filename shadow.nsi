@@ -59,7 +59,7 @@ RequestExecutionLevel admin
  
   !define UMUI_PAGEBGIMAGE
   !define UMUI_UNPAGEBGIMAGE
-
+  !define UMUI_LEFTIMAGE_BMP "Left_Shadow.bmp"
 
  
 !include "UMUI.nsh"
