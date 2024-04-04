@@ -170,17 +170,17 @@ Page instfiles
 UninstPage uninstConfirm
 UninstPage instfiles
 
-Section "Windows SDK 10" SDK10_FLAG
+Section "Windows SDK 10" SecSDK10
  StrCpy $vsBuildOptions "$vsBuildOptions --add Microsoft.VisualStudio.Component.Windows10SDK.20348"
  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "Windows10SDK" "20348"  
 SectionEnd
 
-Section "Windows SDK 11" SDK11_FLAG
+Section "Windows SDK 11" SecSDK11
  StrCpy $vsBuildOptions "$vsBuildOptions --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Shadow" "Windows11SDK" "22621"  
 SectionEnd
 
-Section "Visual Studio Build Tools for Clang"
+Section "Visual Studio Build Tools for Clang" SecVisualStudio
   SectionIn RO
   InitPluginsDir 
   
@@ -205,8 +205,12 @@ Section "Visual Studio Build Tools for Clang"
   nsExec::Exec 'java -jar PathEditor.jar add "$0"'  
 SectionEnd
 
-Section "Shadow ${SHADOW_VERSION}"
+Section "Shadow ${SHADOW_VERSION}" SecShadow
   SectionIn RO
+
+  SetDetailsPrint textonly
+  DetailPrint "Shadow compiler, documentation, and standard library."
+  SetDetailsPrint listonly
   
   SetOutPath "$INSTDIR\include"
   File /nonfatal /a /r "include\" # C headers
@@ -248,7 +252,7 @@ Section "Shadow ${SHADOW_VERSION}"
 SectionEnd
 
 ; Optional section (can be disabled by the user)
-Section "Start Menu Shortcuts"
+Section "Start Menu Shortcuts" SecStartMenu
 
   CreateDirectory "$SMPROGRAMS\Shadow"
   CreateShortcut "$SMPROGRAMS\Shadow\Uninstall.lnk" "$INSTDIR\uninstall.exe"  
@@ -326,10 +330,29 @@ keepVSBuildTools:
   RMDir "$INSTDIR"
 SectionEnd
 
+;--------------------------------
+;Descriptions
+
+  ;Language strings
+  LangString DESC_SecSDK10 ${LANG_ENGLISH} "Installs Windows 10 SDK, used for development of Windows native programs. Note that at least one Windows SDK is required for compiling even basic Shadow programs."
+  LangString DESC_SecSDK11 ${LANG_ENGLISH} "Installs Windows 11 SDK, used for development of Windows native programs. Note that at least one Windows SDK is required for compiling even basic Shadow programs."
+  LangString DESC_SecVisualStudio ${LANG_ENGLISH} "Installs Visual Studio Build Tools, including LLVM and Clang infrastructure used for compiling Shadow intermediate code and Visual Studio tools for linking executables."
+  LangString DESC_SecShadow ${LANG_ENGLISH} "Installs core Shadow compiler and documentation tools."
+  LangString DESC_SecStartMenu ${LANG_ENGLISH} "Adds Shadow and uninstall link to start menu. (Optional)"
+
+  ;Assign language strings to sections
+  !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecSDK10} $(DESC_SecSDK10)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecSDK11} $(DESC_SecSDK11)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecVisualStudio} $(DESC_VisualStudio)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecShadow} $(DESC_SecShadow)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} $(DESC_SecStartMenu)
+  !insertmacro MUI_FUNCTION_DESCRIPTION_END
+
 Function CountSDKs
-  SectionGetFlags "${SDK10_FLAG}" $0
+  SectionGetFlags "${SecSDK10}" $0
   IntOp $1 $0 & ${SF_SELECTED}
-  SectionGetFlags "${SDK11_FLAG}" $0
+  SectionGetFlags "${SecSDK11}" $0
   IntOp $0 $0 & ${SF_SELECTED}
   IntOp $1 $1 + $0 
   IntCmp $1 1 doneCounting notEnough doneCounting
@@ -535,8 +558,8 @@ Function .onInit
     MessageBox MB_OK "Shadow requires Windows 10 or later."
     Quit
   ${Else}
-    !insertmacro SelectSection ${SDK10_FLAG}
-    !insertmacro UnselectSection ${SDK11_FLAG}
+    !insertmacro SelectSection ${SecSDK10}}
+    !insertmacro UnselectSection ${SecSDK11}
   ${EndIf}
 FunctionEnd
 
