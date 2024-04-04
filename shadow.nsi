@@ -52,7 +52,6 @@ RequestExecutionLevel admin
 ;--------------------------------
 ;Interface Settings
 
- ;!define UMUI_SKIN "SoftRed"
  
  !define MUI_ABORTWARNING
  !define MUI_UNABORTWARNING
@@ -67,7 +66,8 @@ RequestExecutionLevel admin
  ;Pages
 
   !insertmacro MUI_PAGE_LICENSE "License.txt"
-  !insertmacro MUI_PAGE_COMPONENTS
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE CountSDKs  
+  !insertmacro MUI_PAGE_COMPONENTS   
   !insertmacro MUI_PAGE_DIRECTORY
   !insertmacro MUI_PAGE_INSTFILES
   
@@ -161,14 +161,6 @@ FunctionEnd
 
 Var vsBuildOptions
 
-; Pages
-
-Page components "" "" CountSDKs
-Page directory
-Page instfiles
-
-UninstPage uninstConfirm
-UninstPage instfiles
 
 Section "Windows SDK 10" SecSDK10
  StrCpy $vsBuildOptions "$vsBuildOptions --add Microsoft.VisualStudio.Component.Windows10SDK.20348"
@@ -334,17 +326,17 @@ SectionEnd
 ;Descriptions
 
   ;Language strings
-  LangString DESC_SecSDK10 ${LANG_ENGLISH} "Installs Windows 10 SDK, used for development of Windows native programs. Note that at least one Windows SDK is required for compiling even basic Shadow programs."
-  LangString DESC_SecSDK11 ${LANG_ENGLISH} "Installs Windows 11 SDK, used for development of Windows native programs. Note that at least one Windows SDK is required for compiling even basic Shadow programs."
+  LangString DESC_SecSDK10 ${LANG_ENGLISH} "Installs Windows 10 SDK, used for development of Windows native programs.$\n$\nNote that at least one Windows SDK is required for compiling any Shadow program."
+  LangString DESC_SecSDK11 ${LANG_ENGLISH} "Installs Windows 11 SDK, used for development of Windows native programs.$\n$\nNote that at least one Windows SDK is required for compiling any Shadow program."
   LangString DESC_SecVisualStudio ${LANG_ENGLISH} "Installs Visual Studio Build Tools, including LLVM and Clang infrastructure used for compiling Shadow intermediate code and Visual Studio tools for linking executables."
   LangString DESC_SecShadow ${LANG_ENGLISH} "Installs core Shadow compiler and documentation tools."
-  LangString DESC_SecStartMenu ${LANG_ENGLISH} "Adds Shadow and uninstall link to start menu. (Optional)"
+  LangString DESC_SecStartMenu ${LANG_ENGLISH} "Adds Shadow and uninstall link to start menu.$\n(Optional)"
 
   ;Assign language strings to sections
   !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecSDK10} $(DESC_SecSDK10)
     !insertmacro MUI_DESCRIPTION_TEXT ${SecSDK11} $(DESC_SecSDK11)
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecVisualStudio} $(DESC_VisualStudio)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecVisualStudio} $(DESC_SecVisualStudio)
     !insertmacro MUI_DESCRIPTION_TEXT ${SecShadow} $(DESC_SecShadow)
     !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} $(DESC_SecStartMenu)
   !insertmacro MUI_FUNCTION_DESCRIPTION_END
@@ -354,7 +346,7 @@ Function CountSDKs
   IntOp $1 $0 & ${SF_SELECTED}
   SectionGetFlags "${SecSDK11}" $0
   IntOp $0 $0 & ${SF_SELECTED}
-  IntOp $1 $1 + $0 
+  IntOp $1 $1 + $0  
   IntCmp $1 1 doneCounting notEnough doneCounting
 notEnough:
   MessageBox MB_OK|MB_ICONSTOP "You must select at least one SDK."
@@ -483,9 +475,6 @@ FunctionEnd
 !ifndef ERROR_MORE_DATA
     !define ERROR_MORE_DATA 234
 !endif
-
-
-
 
 Function RegReadExpandStringAlloc
     System::Store S
